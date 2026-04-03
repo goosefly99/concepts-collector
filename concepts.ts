@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type {
   ResearchItem,
   KnowledgeOverview,
@@ -9,7 +10,32 @@ import type {
   Theme,
 } from './types.ts'
 
-const DEFAULT_DIR = './overviews'
+// ── Configurable output directory ───────────────────────────────
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+function loadOutputDir(): string {
+  // 1. Environment variable takes highest priority
+  if (process.env.CONCEPTS_OUTPUT_DIR) {
+    return resolve(process.env.CONCEPTS_OUTPUT_DIR)
+  }
+
+  // 2. Local config file (not committed to git)
+  const configPath = join(__dirname, 'config.local.json')
+  if (existsSync(configPath)) {
+    try {
+      const config = JSON.parse(readFileSync(configPath, 'utf-8')) as { output_dir?: string }
+      if (config.output_dir) return resolve(config.output_dir)
+    } catch {
+      // Ignore malformed config, fall through to default
+    }
+  }
+
+  // 3. Default: relative ./overviews directory
+  return resolve('./overviews')
+}
+
+const OUTPUT_DIR = loadOutputDir()
 
 // ── Collect concepts from research items ────────────────────────
 
@@ -240,7 +266,7 @@ export function saveOverview(
   overview: KnowledgeOverview,
   outputDir?: string,
 ): string {
-  const dir = resolve(outputDir ?? DEFAULT_DIR)
+  const dir = outputDir ? resolve(outputDir) : OUTPUT_DIR
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   const slug = overview.title
@@ -265,7 +291,7 @@ export function listOverviews(directory?: string): {
   source_count: number
   file: string
 }[] {
-  const dir = resolve(directory ?? DEFAULT_DIR)
+  const dir = directory ? resolve(directory) : OUTPUT_DIR
   if (!existsSync(dir)) return []
 
   return readdirSync(dir)
@@ -288,7 +314,7 @@ export function getOverview(
   overviewId: string,
   directory?: string,
 ): KnowledgeOverview | null {
-  const dir = resolve(directory ?? DEFAULT_DIR)
+  const dir = directory ? resolve(directory) : OUTPUT_DIR
   if (!existsSync(dir)) return null
 
   const files = readdirSync(dir).filter((f: string) => f.endsWith('.json'))
